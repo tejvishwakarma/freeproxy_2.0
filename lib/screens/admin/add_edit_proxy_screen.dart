@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:freeproxy/models/proxy.dart';
 import 'package:freeproxy/services/database_service.dart';
 import 'package:freeproxy/services/notification_service.dart';
@@ -22,14 +23,44 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
   final _ipController = TextEditingController();
   final _portController = TextEditingController();
   final _locationController = TextEditingController();
-  final _countryCodeController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
   bool _isEditing = false;
   String? _errorMessage;
-  bool _isActive = true;
+  String? _selectedCountry;
+
+  // Country name to code mapping
+  final Map<String, String> _countryNameToCode = {
+    'United States': 'US',
+    'United Kingdom': 'GB',
+    'Canada': 'CA',
+    'Australia': 'AU',
+    'Germany': 'DE',
+    'France': 'FR',
+    'Italy': 'IT',
+    'Spain': 'ES',
+    'Japan': 'JP',
+    'China': 'CN',
+    'India': 'IN',
+    'Brazil': 'BR',
+    'Russia': 'RU',
+    'Mexico': 'MX',
+    'Netherlands': 'NL',
+    'Singapore': 'SG',
+    'Sweden': 'SE',
+    'Switzerland': 'CH',
+    'Norway': 'NO',
+    'Finland': 'FI',
+    'Denmark': 'DK',
+    'Ireland': 'IE',
+    'New Zealand': 'NZ',
+    'South Africa': 'ZA',
+    'United Arab Emirates': 'AE',
+  };
+
+  List<String> get _countryNames => _countryNameToCode.keys.toList();
 
   @override
   void initState() {
@@ -41,6 +72,7 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
       _populateFormWithExistingData();
     } else if (widget.countryName != null) {
       _locationController.text = widget.countryName!;
+      _selectedCountry = widget.countryName;
     }
   }
 
@@ -53,10 +85,17 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
     _ipController.text = proxy.ip;
     _portController.text = proxy.port;
     _locationController.text = proxy.location;
-    _countryCodeController.text = proxy.countryCode;
+
+    // Find the country name from the code
+    for (final entry in _countryNameToCode.entries) {
+      if (entry.value == proxy.countryCode) {
+        _selectedCountry = entry.key;
+        break;
+      }
+    }
+
     _usernameController.text = proxy.username;
     _passwordController.text = proxy.password;
-    _isActive = proxy.isActive;
   }
 
   @override
@@ -64,7 +103,6 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
     _ipController.dispose();
     _portController.dispose();
     _locationController.dispose();
-    _countryCodeController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -81,16 +119,21 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
     });
 
     try {
+      // Get country code from selected country name
+      final countryCode =
+          _selectedCountry != null
+              ? _countryNameToCode[_selectedCountry] ?? 'US'
+              : 'US';
+
       final proxy = Proxy(
         id: _isEditing ? widget.proxy!.id : '',
         ip: _ipController.text.trim(),
         port: _portController.text.trim(),
         username: _usernameController.text.trim(),
         password: _passwordController.text.trim(),
-        countryCode: _countryCodeController.text.trim(),
+        countryCode: countryCode,
         location: _locationController.text.trim(),
-        isActive: _isActive,
-        // createdAt and updatedAt will be set by default constructor
+        isActive: true, // Always active by default
       );
 
       if (_isEditing) {
@@ -111,7 +154,7 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
       }
 
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(true); // Return true to indicate success
       }
     } catch (e) {
       setState(() {
@@ -173,7 +216,10 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
                   hintText: 'Enter IP address (e.g. 192.168.1.1)',
                   border: OutlineInputBorder(),
                 ),
-                keyboardType: TextInputType.text,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                ],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter an IP address';
@@ -202,6 +248,7 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a port number';
@@ -218,12 +265,42 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
 
               const SizedBox(height: 16),
 
+              // Country dropdown
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Country',
+                  border: OutlineInputBorder(),
+                ),
+                value: _selectedCountry,
+                items:
+                    _countryNames.map((String country) {
+                      return DropdownMenuItem<String>(
+                        value: country,
+                        child: Text(country),
+                      );
+                    }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCountry = value;
+                    _locationController.text = value ?? '';
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select a country';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
               // Location field
               TextFormField(
                 controller: _locationController,
                 decoration: const InputDecoration(
                   labelText: 'Location',
-                  hintText: 'Enter country name',
+                  hintText: 'Enter specific location (e.g. New York)',
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
@@ -236,79 +313,29 @@ class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
 
               const SizedBox(height: 16),
 
-              // Country Code field
-              TextFormField(
-                controller: _countryCodeController,
-                decoration: const InputDecoration(
-                  labelText: 'Country Code',
-                  hintText: 'Enter 2-letter country code (e.g. US)',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a country code';
-                  }
-
-                  // Check if it's a 2-letter code
-                  if (value.length != 2) {
-                    return 'Country code should be 2 letters';
-                  }
-
-                  return null;
-                },
-                textCapitalization: TextCapitalization.characters,
-                maxLength: 2,
-              ),
-
-              const SizedBox(height: 8),
-
-              // Username field
+              // Username field - Optional
               TextFormField(
                 controller: _usernameController,
                 decoration: const InputDecoration(
-                  labelText: 'Username',
-                  hintText: 'Enter username',
+                  labelText: 'Username (Optional)',
+                  hintText: 'Enter username if required',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a username';
-                  }
-                  return null;
-                },
+                // No validator since it's optional
               ),
 
               const SizedBox(height: 16),
 
-              // Password field
+              // Password field - Optional
               TextFormField(
                 controller: _passwordController,
                 decoration: const InputDecoration(
-                  labelText: 'Password',
-                  hintText: 'Enter password',
+                  labelText: 'Password (Optional)',
+                  hintText: 'Enter password if required',
                   border: OutlineInputBorder(),
                 ),
                 obscureText: true,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a password';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 8),
-
-              // Active status switch
-              SwitchListTile(
-                title: const Text('Active'),
-                subtitle: const Text('Enable or disable this proxy'),
-                value: _isActive,
-                onChanged: (value) {
-                  setState(() {
-                    _isActive = value;
-                  });
-                },
+                // No validator since it's optional
               ),
 
               const SizedBox(height: 24),

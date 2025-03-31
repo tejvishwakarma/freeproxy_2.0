@@ -174,13 +174,13 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
     ).then((_) => _loadProxies());
   }
 
-  Future<void> _copyToClipboard(String text, String message) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+  // Helper method to mask IP address - showing only first octet
+  String _maskIpAddress(String ip) {
+    final parts = ip.split('.');
+    if (parts.length == 4) {
+      return "${parts[0]}.***.***";
     }
+    return ip; // Return original if not in expected format
   }
 
   Widget _buildProxyStatus(String proxyId) {
@@ -250,7 +250,9 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
         itemCount: _proxies.length,
         itemBuilder: (context, index) {
           final proxy = _proxies[index];
-          final address = '${proxy.ip}:${proxy.port}';
+          // Mask the IP address for security
+          final maskedIp = _maskIpAddress(proxy.ip);
+          final displayText = '$maskedIp:${proxy.port}';
 
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 4),
@@ -265,7 +267,7 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            address,
+                            displayText,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -285,15 +287,7 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
                     ),
                     const SizedBox(width: 8),
                     _buildProxyStatus(proxy.id),
-                    IconButton(
-                      icon: const Icon(Icons.copy),
-                      tooltip: 'Copy to clipboard',
-                      onPressed:
-                          () => _copyToClipboard(
-                            address,
-                            'Proxy address copied to clipboard',
-                          ),
-                    ),
+                    // Removed copy button as requested
                     IconButton(
                       icon: const Icon(Icons.refresh),
                       tooltip: 'Check proxy',

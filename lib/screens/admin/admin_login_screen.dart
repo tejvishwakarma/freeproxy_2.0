@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import 'admin_dashboard_screen.dart';
 
@@ -16,6 +15,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  late AuthService _authService;
+
+  @override
+  void initState() {
+    super.initState();
+    // Create a local instance of AuthService that's not dependent on Provider
+    _authService = AuthService();
+  }
 
   @override
   void dispose() {
@@ -30,10 +37,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         _isLoading = true;
       });
 
-      final authService = Provider.of<AuthService>(context, listen: false);
-
       try {
-        final success = await authService.login(
+        final success = await _authService.login(
           _usernameController.text.trim(),
           _passwordController.text.trim(),
         );

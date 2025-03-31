@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 import 'package:freeproxy/services/theme_provider.dart';
 import 'package:freeproxy/services/database_service.dart';
 import 'package:freeproxy/services/notification_service.dart';
+import 'package:freeproxy/services/auth_service.dart';
 // Import your home screen
 import 'package:freeproxy/screens/home/home_screen.dart'; // Adjust the path if needed
 
@@ -27,8 +28,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Add all providers here
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         Provider<DatabaseService>(create: (_) => DatabaseService()),
+        // Add AuthService provider
+        ChangeNotifierProvider(create: (_) => AuthService()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) {
