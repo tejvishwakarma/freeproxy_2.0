@@ -4,7 +4,7 @@ import '../../services/auth_service.dart';
 import 'admin_dashboard_screen.dart';
 
 class AdminLoginScreen extends StatefulWidget {
-  const AdminLoginScreen({Key? key}) : super(key: key);
+  const AdminLoginScreen({super.key});
 
   @override
   _AdminLoginScreenState createState() => _AdminLoginScreenState();

@@ -6,7 +6,7 @@ import '../../models/proxy.dart';
 import 'add_edit_proxy_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({Key? key}) : super(key: key);
+  const AdminDashboardScreen({super.key});
 
   @override
   _AdminDashboardScreenState createState() => _AdminDashboardScreenState();
@@ -154,7 +154,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           value: country,
                           child: Text(country),
                         );
-                      }).toList(),
+                      }),
                     ],
                     onChanged: (value) {
                       setState(() {
@@ -230,8 +230,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToAddProxy,
-        child: const Icon(Icons.add),
         tooltip: 'Add Proxy',
+        child: const Icon(Icons.add),
       ),
     );
   }

@@ -6,8 +6,7 @@ class CountryCard extends StatelessWidget {
   final Country country;
   final VoidCallback onTap;
 
-  const CountryCard({Key? key, required this.country, required this.onTap})
-    : super(key: key);
+  const CountryCard({super.key, required this.country, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

@@ -5,8 +5,7 @@ class ProxyCard extends StatelessWidget {
   final Proxy proxy;
   final VoidCallback onTap;
 
-  const ProxyCard({Key? key, required this.proxy, required this.onTap})
-    : super(key: key);
+  const ProxyCard({super.key, required this.proxy, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

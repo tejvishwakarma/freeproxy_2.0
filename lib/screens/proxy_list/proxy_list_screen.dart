@@ -8,13 +8,12 @@ import 'package:freeproxy/services/proxy_checker_service.dart';
 import 'package:freeproxy/services/notification_service.dart';
 import 'package:freeproxy/widgets/app_scaffold.dart';
 import 'package:freeproxy/screens/admin/add_edit_proxy_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ProxyListScreen extends StatefulWidget {
-  final String country; // Keep for backward compatibility
-  final String? countryCode; // Add this as optional for now
+  final String country;
 
-  const ProxyListScreen({Key? key, required this.country, this.countryCode})
-    : super(key: key);
+  const ProxyListScreen({Key? key, required this.country}) : super(key: key);
 
   @override
   State<ProxyListScreen> createState() => _ProxyListScreenState();
@@ -24,17 +23,63 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
   final DatabaseService _databaseService = DatabaseService();
   final ProxyCheckerService _proxyCheckerService = ProxyCheckerService();
   final NotificationService _notificationService = NotificationService();
+
   List<Proxy> _proxies = [];
-  final Map<String, ProxyStatus> _proxyStatus = <String, ProxyStatus>{};
+  final Map<String, ProxyStatus> _proxyStatuses = <String, ProxyStatus>{};
   bool _isLoading = true;
   String? _errorMessage;
   bool _checkingStatus = false;
+  bool _isAdmin = false;
+
+  // Map country names to country codes
+  final Map<String, String> _countryNameToCode = {
+    'United States': 'US',
+    'United Kingdom': 'GB',
+    'Canada': 'CA',
+    'Australia': 'AU',
+    'Germany': 'DE',
+    'France': 'FR',
+    'Italy': 'IT',
+    'Spain': 'ES',
+    'Japan': 'JP',
+    'China': 'CN',
+    'India': 'IN',
+    'Brazil': 'BR',
+    'Russia': 'RU',
+    'Mexico': 'MX',
+    'Netherlands': 'NL',
+    'Singapore': 'SG',
+    'Sweden': 'SE',
+    'Switzerland': 'CH',
+    'Norway': 'NO',
+    'Finland': 'FI',
+    'Denmark': 'DK',
+    'Ireland': 'IE',
+    'New Zealand': 'NZ',
+    'South Africa': 'ZA',
+    'United Arab Emirates': 'AE',
+  };
 
   @override
   void initState() {
     super.initState();
     _notificationService.initialize();
     _loadProxies();
+    _checkIfAdmin();
+    print('ProxyListScreen initialized for country: ${widget.country}');
+  }
+
+  // Check if user is admin directly from SharedPreferences
+  Future<void> _checkIfAdmin() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedAdminData = prefs.getString('admin_data');
+      setState(() {
+        _isAdmin = storedAdminData != null;
+      });
+    } catch (e) {
+      print('Error checking admin status: $e');
+    }
   }
 
   Future<void> _loadProxies() async {
@@ -44,207 +89,118 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
     });
 
     try {
-      List<Proxy> proxies = await _databaseService.getAllProxies();
+      // Get the country code from the country name
+      final countryCode = _countryNameToCode[widget.country] ?? widget.country;
+      print(
+        'Loading proxies for location: ${widget.country} (code: $countryCode)',
+      );
 
-      // Filter proxies by country if specified
-      if (widget.country != null && widget.country!.isNotEmpty) {
-        proxies =
-            proxies
-                .where(
-                  (proxy) =>
-                      proxy.location.toLowerCase() ==
-                      widget.country!.toLowerCase(),
-                )
-                .toList();
+      final proxies = await _databaseService.getProxiesByCountry(countryCode);
+
+      if (mounted) {
+        setState(() {
+          _proxies = proxies;
+          _isLoading = false;
+        });
+
+        print('Loaded ${proxies.length} proxies for ${widget.country}');
       }
-
-      setState(() {
-        _proxies = proxies;
-        _isLoading = false;
-      });
-
-      // Check proxy status after loading
-      _checkProxyStatus();
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to load proxies: ${e.toString()}';
-      });
+      print('Error loading proxies: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to load proxies: ${e.toString()}';
+        });
+      }
     }
   }
 
-  Future<void> _checkProxyStatus() async {
-    if (_checkingStatus) return; // Prevent multiple concurrent checks
+  Future<void> _checkProxyStatus({Proxy? singleProxy}) async {
+    if (_checkingStatus) return;
 
     setState(() {
       _checkingStatus = true;
     });
 
-    for (final proxy in _proxies) {
-      // Use the ProxyCheckerService to check each proxy
-      final status = await _proxyCheckerService.checkProxy(proxy);
+    try {
+      final proxiesToCheck = singleProxy != null ? [singleProxy] : _proxies;
 
+      for (final proxy in proxiesToCheck) {
+        setState(() {
+          _proxyStatuses[proxy.id] = ProxyStatus(
+            isAlive: false,
+            responseTimeMs: 0,
+            checkedAt: DateTime.now(),
+          );
+        });
+
+        final status = await _proxyCheckerService.checkProxy(proxy);
+
+        if (mounted) {
+          setState(() {
+            _proxyStatuses[proxy.id] = status;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error checking proxy status: $e');
+    } finally {
       if (mounted) {
         setState(() {
-          // Store the full ProxyStatus object
-          _proxyStatus[proxy.id] = status;
+          _checkingStatus = false;
         });
       }
     }
-
-    setState(() {
-      _checkingStatus = false;
-    });
   }
 
   void _navigateToProxyDetails(Proxy proxy) {
-    // Get the ProxyStatus object from the map
-    final ProxyStatus? status = _proxyStatus[proxy.id];
-
-    // Extract the isAlive property or default to false if status is null
-    final bool isAlive = status?.isAlive ?? false;
+    bool isAlive = _proxyStatuses[proxy.id]?.isAlive ?? false;
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ProxyDetailsScreen(proxy: proxy, isAlive: isAlive),
       ),
-    ).then((_) => _loadProxies()); // Refresh the list when returning
+    );
   }
 
-  Future<void> _navigateToAddProxy() async {
-    final result = await Navigator.push(
+  void _navigateToAddProxy() {
+    Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AddEditProxyScreen()),
-    );
-
-    if (result == true) {
-      _loadProxies();
-    }
-  }
-
-  Future<void> _deleteProxy(Proxy proxy) async {
-    try {
-      await _databaseService.deleteProxy(proxy);
-      _loadProxies();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Proxy deleted successfully')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete proxy: ${e.toString()}')),
-      );
-    }
-  }
-
-  Future<void> _refreshList() async {
-    await _loadProxies();
-  }
-
-  Widget _buildProxyItem(Proxy proxy) {
-    // Get the ProxyStatus or null if not checked yet
-    final ProxyStatus? status = _proxyStatus[proxy.id];
-
-    // Default to gray if not checked yet
-    Color statusColor = Colors.grey;
-    String statusText = "Not checked";
-
-    // Update color and text based on status
-    if (status != null) {
-      if (status.isAlive) {
-        statusColor = Colors.green;
-        statusText = "${status.responseTimeMs} ms";
-      } else {
-        statusColor = Colors.red;
-        statusText = "Offline";
-      }
-    }
-
-    return Dismissible(
-      key: Key(proxy.id),
-      background: Container(
-        color: Colors.red,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: const Icon(Icons.delete, color: Colors.white),
+      MaterialPageRoute(
+        builder: (_) => AddEditProxyScreen(countryName: widget.country),
       ),
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (direction) async {
-        return await showDialog(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text('Delete Proxy'),
-                content: const Text(
-                  'Are you sure you want to delete this proxy?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Delete'),
-                  ),
-                ],
-              ),
-        );
-      },
-      onDismissed: (direction) {
-        _deleteProxy(proxy);
-      },
-      child: ListTile(
-        leading: Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor),
-        ),
-        title: Text('${proxy.ip}:${proxy.port}'),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Removed the label check since your Proxy model doesn't have a label property
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 14),
-                const SizedBox(width: 4),
-                Text(proxy.location.isEmpty ? 'Unknown' : proxy.location),
-                const SizedBox(width: 12),
-                Text(
-                  statusText,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.copy),
-              onPressed: () {
-                final proxyString =
-                    proxy.username.isNotEmpty && proxy.password.isNotEmpty
-                        ? 'socks5://${proxy.username}:${proxy.password}@${proxy.ip}:${proxy.port}'
-                        : 'socks5://${proxy.ip}:${proxy.port}';
-                Clipboard.setData(ClipboardData(text: proxyString));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Proxy copied to clipboard')),
-                );
-              },
-              tooltip: 'Copy proxy string',
-            ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-        onTap: () => _navigateToProxyDetails(proxy),
-      ),
-    );
+    ).then((_) => _loadProxies());
+  }
+
+  Future<void> _copyToClipboard(String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Widget _buildProxyStatus(String proxyId) {
+    if (!_proxyStatuses.containsKey(proxyId)) {
+      return const SizedBox.shrink();
+    }
+
+    final status = _proxyStatuses[proxyId]!;
+
+    if (_checkingStatus) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else if (status.isAlive) {
+      return const Icon(Icons.check_circle, color: Colors.green, size: 16);
+    } else {
+      return const Icon(Icons.error, color: Colors.red, size: 16);
+    }
   }
 
   Widget _buildBody() {
@@ -257,7 +213,9 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_errorMessage!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             ElevatedButton(onPressed: _loadProxies, child: const Text('Retry')),
           ],
@@ -270,31 +228,85 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.vpn_key, size: 64, color: Colors.grey),
+            const Icon(Icons.dns_outlined, size: 48, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text(
-              'No proxies added yet',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('Add Proxy'),
-              onPressed: _navigateToAddProxy,
-            ),
+            Text('No proxies available for ${widget.country}'),
+            const SizedBox(height: 16),
+            if (_isAdmin)
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Add New Proxy'),
+                onPressed: _navigateToAddProxy,
+              ),
           ],
         ),
       );
     }
 
     return RefreshIndicator(
-      onRefresh: _refreshList,
-      child: ListView.separated(
+      onRefresh: _loadProxies,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(8),
         itemCount: _proxies.length,
-        separatorBuilder: (context, index) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final proxy = _proxies[index];
-          return _buildProxyItem(proxy);
+          final address = '${proxy.ip}:${proxy.port}';
+
+          return Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: InkWell(
+              onTap: () => _navigateToProxyDetails(proxy),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            address,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Location: ${proxy.location}',
+                            style: TextStyle(
+                              color:
+                                  Theme.of(context).textTheme.bodySmall?.color,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildProxyStatus(proxy.id),
+                    IconButton(
+                      icon: const Icon(Icons.copy),
+                      tooltip: 'Copy to clipboard',
+                      onPressed:
+                          () => _copyToClipboard(
+                            address,
+                            'Proxy address copied to clipboard',
+                          ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Check proxy',
+                      onPressed:
+                          _checkingStatus
+                              ? null
+                              : () => _checkProxyStatus(singleProxy: proxy),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
         },
       ),
     );
@@ -302,28 +314,27 @@ class _ProxyListScreenState extends State<ProxyListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String title = 'My Proxies';
-    if (widget.country != null && widget.country!.isNotEmpty) {
-      title = '${widget.country} Proxies';
-    }
-
     return AppScaffold(
-      title: title,
+      title: '${widget.country} Proxies',
       actions: [
         if (_proxies.isNotEmpty && !_checkingStatus)
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _checkProxyStatus,
+            onPressed: () => _checkProxyStatus(),
             tooltip: 'Check all proxies',
           ),
       ],
       body: _buildBody(),
+      // Only show FAB if user is admin
+      floatingActionButton:
+          _isAdmin
+              ? FloatingActionButton(
+                onPressed: _navigateToAddProxy,
+                tooltip: 'Add new proxy',
+                child: const Icon(Icons.add),
+              )
+              : null,
       bottomNavigationIndex: 0,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToAddProxy,
-        tooltip: 'Add new proxy',
-        child: const Icon(Icons.add),
-      ),
     );
   }
 }

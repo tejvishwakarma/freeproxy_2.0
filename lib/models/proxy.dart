@@ -23,8 +23,8 @@ class Proxy {
     this.isActive = true,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) : this.createdAt = createdAt ?? DateTime.now(),
-       this.updatedAt = updatedAt ?? DateTime.now();
+  }) : createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
 
   // Create Proxy from Firestore data
   factory Proxy.fromFirestore(Map<String, dynamic> data, String documentId) {

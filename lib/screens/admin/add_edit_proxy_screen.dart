@@ -1,459 +1,330 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../models/proxy.dart';
-import '../../services/database_service.dart';
+import 'package:freeproxy/models/proxy.dart';
+import 'package:freeproxy/services/database_service.dart';
+import 'package:freeproxy/services/notification_service.dart';
 
 class AddEditProxyScreen extends StatefulWidget {
-  final Proxy? proxy; // Null if adding new proxy, existing proxy if editing
+  final Proxy? proxy;
+  final String? countryName;
 
-  const AddEditProxyScreen({Key? key, this.proxy}) : super(key: key);
+  const AddEditProxyScreen({Key? key, this.proxy, this.countryName})
+    : super(key: key);
 
   @override
-  _AddEditProxyScreenState createState() => _AddEditProxyScreenState();
+  State<AddEditProxyScreen> createState() => _AddEditProxyScreenState();
 }
 
 class _AddEditProxyScreenState extends State<AddEditProxyScreen> {
   final _formKey = GlobalKey<FormState>();
   final DatabaseService _databaseService = DatabaseService();
+  final NotificationService _notificationService = NotificationService();
+
+  final _ipController = TextEditingController();
+  final _portController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _countryCodeController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+
   bool _isLoading = false;
-
-  // Form fields
-  late TextEditingController _ipController;
-  late TextEditingController _portController;
-  late TextEditingController _usernameController;
-  late TextEditingController _passwordController;
-  late TextEditingController _locationController;
-  String _selectedCountry = 'US'; // Default country
+  bool _isEditing = false;
+  String? _errorMessage;
   bool _isActive = true;
-
-  // List of countries for dropdown
-  final List<Map<String, String>> _countries = [
-    {'code': 'US', 'name': 'United States'},
-    {'code': 'GB', 'name': 'United Kingdom'},
-    {'code': 'DE', 'name': 'Germany'},
-    {'code': 'FR', 'name': 'France'},
-    {'code': 'CA', 'name': 'Canada'},
-    {'code': 'AU', 'name': 'Australia'},
-    {'code': 'JP', 'name': 'Japan'},
-    {'code': 'IN', 'name': 'India'},
-    {'code': 'BR', 'name': 'Brazil'},
-    {'code': 'RU', 'name': 'Russia'},
-    {'code': 'IT', 'name': 'Italy'},
-    {'code': 'ES', 'name': 'Spain'},
-    {'code': 'NL', 'name': 'Netherlands'},
-    {'code': 'CN', 'name': 'China'},
-    {'code': 'SG', 'name': 'Singapore'},
-  ];
 
   @override
   void initState() {
     super.initState();
+    _isEditing = widget.proxy != null;
+    _initializeNotifications();
 
-    // Initialize controllers with existing proxy data if editing
-    _ipController = TextEditingController(text: widget.proxy?.ip ?? '');
-    _portController = TextEditingController(text: widget.proxy?.port ?? '');
-    _usernameController = TextEditingController(
-      text: widget.proxy?.username ?? '',
-    );
-    _passwordController = TextEditingController(
-      text: widget.proxy?.password ?? '',
-    );
-    _locationController = TextEditingController(
-      text: widget.proxy?.location ?? '',
-    );
-
-    if (widget.proxy != null) {
-      _selectedCountry = widget.proxy!.countryCode;
-      _isActive = widget.proxy!.isActive;
+    if (_isEditing) {
+      _populateFormWithExistingData();
+    } else if (widget.countryName != null) {
+      _locationController.text = widget.countryName!;
     }
+  }
+
+  Future<void> _initializeNotifications() async {
+    await _notificationService.initialize();
+  }
+
+  void _populateFormWithExistingData() {
+    final proxy = widget.proxy!;
+    _ipController.text = proxy.ip;
+    _portController.text = proxy.port;
+    _locationController.text = proxy.location;
+    _countryCodeController.text = proxy.countryCode;
+    _usernameController.text = proxy.username;
+    _passwordController.text = proxy.password;
+    _isActive = proxy.isActive;
   }
 
   @override
   void dispose() {
     _ipController.dispose();
     _portController.dispose();
+    _locationController.dispose();
+    _countryCodeController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
-    _locationController.dispose();
     super.dispose();
   }
 
-  // Validate IP address format
-  bool _isValidIpAddress(String ip) {
-    RegExp ipRegex = RegExp(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$');
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-    if (!ipRegex.hasMatch(ip)) return false;
-
-    // Check each octet is between 0-255
-    List<String> octets = ip.split('.');
-    return octets.every((octet) {
-      int value = int.parse(octet);
-      return value >= 0 && value <= 255;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
     });
-  }
 
-  // Save proxy to database
-  Future<void> _saveProxy() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        setState(() {
-          _isLoading = true;
-        });
+    try {
+      final proxy = Proxy(
+        id: _isEditing ? widget.proxy!.id : '',
+        ip: _ipController.text.trim(),
+        port: _portController.text.trim(),
+        username: _usernameController.text.trim(),
+        password: _passwordController.text.trim(),
+        countryCode: _countryCodeController.text.trim(),
+        location: _locationController.text.trim(),
+        isActive: _isActive,
+        // createdAt and updatedAt will be set by default constructor
+      );
 
-        // Create proxy object from form data
-        Proxy proxy = Proxy(
-          id: widget.proxy?.id ?? '',
-          ip: _ipController.text.trim(),
-          port: _portController.text.trim(),
-          username: _usernameController.text.trim(), // Now optional
-          password: _passwordController.text.trim(), // Now optional
-          countryCode: _selectedCountry,
-          location: _locationController.text.trim(),
-          isActive: _isActive,
-          createdAt: widget.proxy?.createdAt,
-          updatedAt: DateTime.now(),
-        );
-
+      if (_isEditing) {
         await _databaseService.saveProxy(proxy);
-
         if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-
-          // Show success message and pop back
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Proxy ${widget.proxy == null ? 'added' : 'updated'} successfully',
-              ),
-            ),
-          );
-          Navigator.of(context).pop(true); // Return true to indicate success
+          _showSuccessMessage('Proxy updated successfully');
         }
-      } catch (e) {
+      } else {
+        await _databaseService.saveProxy(proxy);
+        if (mounted) {
+          _showSuccessMessage('Proxy added successfully');
+          // Show notification
+          await _notificationService.showProxyAddedNotification(
+            proxy.ip,
+            proxy.port,
+          );
+        }
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error: ${e.toString()}';
+      });
+    } finally {
+      if (mounted) {
         setState(() {
           _isLoading = false;
         });
-
-        // Show error message
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
       }
     }
+  }
+
+  void _showSuccessMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.proxy == null ? 'Add New Proxy' : 'Edit Proxy'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _isLoading ? null : _saveProxy,
-            tooltip: 'Save Proxy',
-          ),
-        ],
-      ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // IP Address
-                      TextFormField(
-                        controller: _ipController,
-                        decoration: const InputDecoration(
-                          labelText: 'IP Address',
-                          hintText: 'e.g. 192.168.1.1',
-                          prefixIcon: Icon(Icons.language),
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter an IP address';
-                          }
-                          if (!_isValidIpAddress(value)) {
-                            return 'Please enter a valid IP address';
-                          }
-                          return null;
-                        },
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Port
-                      TextFormField(
-                        controller: _portController,
-                        decoration: const InputDecoration(
-                          labelText: 'Port',
-                          hintText: 'e.g. 8080',
-                          prefixIcon: Icon(Icons.settings_ethernet),
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a port number';
-                          }
-
-                          int? port = int.tryParse(value);
-                          if (port == null || port < 1 || port > 65535) {
-                            return 'Please enter a valid port number (1-65535)';
-                          }
-
-                          return null;
-                        },
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Username (Optional)
-                      TextFormField(
-                        controller: _usernameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Username (Optional)',
-                          hintText: 'Enter proxy username (optional)',
-                          prefixIcon: Icon(Icons.person),
-                          border: OutlineInputBorder(),
-                        ),
-                        // No validator - field is optional
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Password (Optional)
-                      TextFormField(
-                        controller: _passwordController,
-                        decoration: InputDecoration(
-                          labelText: 'Password (Optional)',
-                          hintText: 'Enter proxy password (optional)',
-                          prefixIcon: const Icon(Icons.lock),
-                          border: const OutlineInputBorder(),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.content_copy),
-                            tooltip: 'Generate Password',
-                            onPressed: () {
-                              // Generate a random password (in a real app)
-                              setState(() {
-                                _passwordController.text =
-                                    'Password${DateTime.now().millisecondsSinceEpoch % 10000}';
-                              });
-                            },
-                          ),
-                        ),
-                        // No validator - field is optional
-                        obscureText: true,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Country selection
-                      DropdownButtonFormField<String>(
-                        value: _selectedCountry,
-                        decoration: const InputDecoration(
-                          labelText: 'Country',
-                          prefixIcon: Icon(Icons.public),
-                          border: OutlineInputBorder(),
-                        ),
-                        items:
-                            _countries.map((country) {
-                              return DropdownMenuItem<String>(
-                                value: country['code'],
-                                child: Text(
-                                  '${country['name']} (${country['code']})',
-                                ),
-                              );
-                            }).toList(),
-                        onChanged: (String? value) {
-                          if (value != null) {
-                            setState(() {
-                              _selectedCountry = value;
-                            });
-                          }
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please select a country';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Location
-                      TextFormField(
-                        controller: _locationController,
-                        decoration: const InputDecoration(
-                          labelText: 'Location',
-                          hintText: 'e.g. New York, NY',
-                          prefixIcon: Icon(Icons.location_on),
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a location';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Active toggle
-                      SwitchListTile(
-                        title: const Text('Active'),
-                        subtitle: const Text('Enable or disable this proxy'),
-                        value: _isActive,
-                        onChanged: (bool value) {
-                          setState(() {
-                            _isActive = value;
-                          });
-                        },
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Save button
-                      ElevatedButton(
-                        onPressed: _isLoading ? null : _saveProxy,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        child: Text(
-                          widget.proxy == null ? 'Add Proxy' : 'Update Proxy',
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                      ),
-
-                      if (widget.proxy != null) ...[
-                        const SizedBox(height: 16),
-                        // Delete button (only for editing)
-                        OutlinedButton(
-                          onPressed:
-                              _isLoading
-                                  ? null
-                                  : () async {
-                                    // Show confirmation dialog
-                                    bool? confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder:
-                                          (context) => AlertDialog(
-                                            title: const Text('Delete Proxy'),
-                                            content: const Text(
-                                              'Are you sure you want to delete this proxy? This action cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed:
-                                                    () => Navigator.pop(
-                                                      context,
-                                                      false,
-                                                    ),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              TextButton(
-                                                onPressed:
-                                                    () => Navigator.pop(
-                                                      context,
-                                                      true,
-                                                    ),
-                                                child: const Text(
-                                                  'Delete',
-                                                  style: TextStyle(
-                                                    color: Colors.red,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                    );
-
-                                    // If confirmed, delete the proxy
-                                    if (confirm == true) {
-                                      try {
-                                        setState(() {
-                                          _isLoading = true;
-                                        });
-
-                                        await _databaseService.deleteProxy(
-                                          widget.proxy!,
-                                        );
-
-                                        if (mounted) {
-                                          setState(() {
-                                            _isLoading = false;
-                                          });
-
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'Proxy deleted successfully',
-                                              ),
-                                            ),
-                                          );
-                                          Navigator.of(context).pop(
-                                            true,
-                                          ); // Return true to indicate success
-                                        }
-                                      } catch (e) {
-                                        setState(() {
-                                          _isLoading = false;
-                                        });
-
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Error deleting proxy: ${e.toString()}',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            foregroundColor: Colors.red,
-                          ),
-                          child: const Text(
-                            'Delete Proxy',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-                      ],
-
-                      // Created/updated timestamps (only for editing)
-                      if (widget.proxy != null) ...[
-                        const SizedBox(height: 24),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Created: ${_formatDateTime(widget.proxy!.createdAt)}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Last Updated: ${_formatDateTime(widget.proxy!.updatedAt)}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+      appBar: AppBar(title: Text(_isEditing ? 'Edit Proxy' : 'Add Proxy')),
+      body: _buildForm(),
     );
   }
 
-  // Format DateTime for display
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
-        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  Widget _buildForm() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+              // IP Address field
+              TextFormField(
+                controller: _ipController,
+                decoration: const InputDecoration(
+                  labelText: 'IP Address',
+                  hintText: 'Enter IP address (e.g. 192.168.1.1)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.text,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter an IP address';
+                  }
+
+                  // Simple IP validation
+                  final ipRegex = RegExp(
+                    r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$',
+                  );
+                  if (!ipRegex.hasMatch(value)) {
+                    return 'Enter a valid IP address';
+                  }
+
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Port field
+              TextFormField(
+                controller: _portController,
+                decoration: const InputDecoration(
+                  labelText: 'Port',
+                  hintText: 'Enter port (e.g. 8080)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a port number';
+                  }
+
+                  final port = int.tryParse(value);
+                  if (port == null || port < 1 || port > 65535) {
+                    return 'Enter a valid port number (1-65535)';
+                  }
+
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Location field
+              TextFormField(
+                controller: _locationController,
+                decoration: const InputDecoration(
+                  labelText: 'Location',
+                  hintText: 'Enter country name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a location';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Country Code field
+              TextFormField(
+                controller: _countryCodeController,
+                decoration: const InputDecoration(
+                  labelText: 'Country Code',
+                  hintText: 'Enter 2-letter country code (e.g. US)',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a country code';
+                  }
+
+                  // Check if it's a 2-letter code
+                  if (value.length != 2) {
+                    return 'Country code should be 2 letters';
+                  }
+
+                  return null;
+                },
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 2,
+              ),
+
+              const SizedBox(height: 8),
+
+              // Username field
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  hintText: 'Enter username',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a username';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Password field
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  hintText: 'Enter password',
+                  border: OutlineInputBorder(),
+                ),
+                obscureText: true,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a password';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 8),
+
+              // Active status switch
+              SwitchListTile(
+                title: const Text('Active'),
+                subtitle: const Text('Enable or disable this proxy'),
+                value: _isActive,
+                onChanged: (value) {
+                  setState(() {
+                    _isActive = value;
+                  });
+                },
+              ),
+
+              const SizedBox(height: 24),
+
+              // Submit button
+              ElevatedButton(
+                onPressed: _isLoading ? null : _submitForm,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text(_isEditing ? 'Update Proxy' : 'Add Proxy'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

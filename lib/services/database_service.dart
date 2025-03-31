@@ -36,6 +36,52 @@ class DatabaseService {
     }
   }
 
+  // Get proxies for a specific country by name instead of code
+  Future<List<Proxy>> getProxiesByCountryName(String countryName) async {
+    try {
+      print('Querying proxies for country name: $countryName');
+
+      // Get proxies from Firestore by location field
+      QuerySnapshot proxySnapshot =
+          await _proxiesCollection
+              .where('location', isEqualTo: countryName)
+              .where('isActive', isEqualTo: true)
+              .get();
+
+      print('Found ${proxySnapshot.docs.length} proxies for $countryName');
+
+      // Debug output to check documents
+      for (var doc in proxySnapshot.docs) {
+        print('Proxy doc: ${doc.id}, data: ${doc.data()}');
+      }
+
+      return proxySnapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return Proxy(
+          id: doc.id,
+          ip: data['ip'] ?? '',
+          port: data['port'] ?? '',
+          username: data['username'],
+          password: data['password'],
+          countryCode: data['countryCode'] ?? '',
+          location: data['location'] ?? '',
+          isActive: data['isActive'] ?? true,
+          createdAt:
+              data['createdAt'] != null
+                  ? (data['createdAt'] as Timestamp).toDate()
+                  : DateTime.now(),
+          updatedAt:
+              data['updatedAt'] != null
+                  ? (data['updatedAt'] as Timestamp).toDate()
+                  : DateTime.now(),
+        );
+      }).toList();
+    } catch (e) {
+      print('Error getting proxies by country name: $e');
+      throw e;
+    }
+  }
+
   // Get proxies for a specific country
   Future<List<Proxy>> getProxiesByCountry(String countryCode) async {
     try {

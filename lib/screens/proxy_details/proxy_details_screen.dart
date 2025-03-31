@@ -9,17 +9,17 @@ class ProxyDetailsScreen extends StatefulWidget {
   final bool isAlive;
 
   const ProxyDetailsScreen({
-    Key? key,
+    super.key,
     required this.proxy,
     required this.isAlive,
-  }) : super(key: key);
+  });
 
   @override
   _ProxyDetailsScreenState createState() => _ProxyDetailsScreenState();
 }
 
 class _ProxyDetailsScreenState extends State<ProxyDetailsScreen> {
-  Map<String, bool> _copiedFields = {};
+  final Map<String, bool> _copiedFields = {};
   final DateTime _currentDateTime = DateTime.now().toUtc();
 
   void _copyToClipboard(String text, String fieldName) {
