@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "516150859033",
+    "project_id": "freeproxy-f9fac",
+    "storage_bucket": "freeproxy-f9fac.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:516150859033:android:9f392ee16013e4c093e188",
+        "android_client_info": {
+          "package_name": "com.digitalchitrakar.freeproxy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDzuOpCY1zd_oVKJ6coJyjjtPcWKQaVC_M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:516150859033:android:8e5568e2693101c493e188",
+        "android_client_info": {
+          "package_name": "com.digitalchitrakar.freeproxy.freeproxy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDzuOpCY1zd_oVKJ6coJyjjtPcWKQaVC_M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
